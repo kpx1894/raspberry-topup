@@ -1,0 +1,9 @@
+{
+    "water_sensor_gpio": 21,
+    "topup_pump_gpio": 8,
+    "sweep_motor_gpio": 9,
+    "topup_min_open_s": 30,
+    "topup_min_close_s": 14400,
+    "sweep_on_s": 60,
+    "sweep_off_s": 14400
+}
