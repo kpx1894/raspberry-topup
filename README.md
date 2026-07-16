@@ -44,8 +44,15 @@ A simple repeating cycle, starting with the off period: off for
 
 - The pump and motor must be driven through suitable driver electronics
   (relay modules or MOSFET circuits) — never directly from a GPIO pin.
-- The sensor output must be a **3.3 V** signal — a 5 V-powered sensor
-  that drives 5 V on its signal pin will damage the Pi's GPIO.
+- Power the sensor from the Pi's **3.3 V** rail so its output can never
+  exceed 3.3 V — a sensor that drives more than 3.3 V on its signal pin
+  stresses or damages the Pi's GPIO. For bare LED-plus-phototransistor
+  modules (no on-board comparator), measure the signal pin with the tip
+  dry after switching to 3.3 V: it should stay comfortably above
+  ~2.5 V. If it sits near the Pi's ~1.6 V input threshold instead,
+  lower the IR LED's series resistor to restore ~10 mA of LED current
+  (about 200 Ω at 3.3 V, e.g. a 470 Ω soldered in parallel with a
+  factory 380 Ω).
 - GPIO 8/9 are the SPI CE0/MISO pins: the SPI interface must be disabled
   (`raspi-config` → Interface Options → SPI → No), or different pins
   configured.
