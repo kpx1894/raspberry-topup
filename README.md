@@ -231,16 +231,17 @@ Covered scenarios:
 
 ## Running as a service
 
-Create `/etc/systemd/system/topup.service`:
+Create `/etc/systemd/system/topup.service`, replacing `<user>` with the
+account that should run the service:
 
 ```ini
 [Unit]
 Description=Aquarium top-up and skimmer sweep controller
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/topup/topup.py
-WorkingDirectory=/home/pi
-User=pi
+ExecStart=/usr/bin/python3 /home/<user>/topup/topup.py
+WorkingDirectory=/home/<user>
+User=<user>
 Restart=on-failure
 RestartSec=5
 
@@ -256,8 +257,8 @@ sudo systemctl enable --now topup
 journalctl -u topup -f        # follow the logs
 ```
 
-The `User=` account must be in the `gpio` group (the default `pi` user
-is). `systemctl stop` sends SIGTERM, which the program handles by
+The `User=` account must be in the `gpio` group. `systemctl stop`
+sends SIGTERM, which the program handles by
 switching both outputs off before exiting; `Restart=on-failure` pairs
 with the non-zero exit code the program uses when a control thread
 crashes, a worker fails to stop, or the config is invalid, while a
@@ -280,6 +281,6 @@ service crash-loops.
   or directory: '.lgd-nfy-…'` warnings and `xCreatePipe: Can't set
   permissions` messages. Running the script by hand works, because an
   interactive shell starts in the home directory.
-- **Solution:** the `WorkingDirectory=/home/pi` line in the unit above.
+- **Solution:** the `WorkingDirectory=` line in the unit above.
   Any directory writable by the `User=` account works; the FIFO is
   removed again on clean exit.
