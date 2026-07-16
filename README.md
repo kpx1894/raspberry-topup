@@ -113,17 +113,36 @@ no GPIO device is opened before the config has validated.
 observed within a minute instead of hours. It drives the real outputs:
 the pump and motor genuinely switch.
 
-To swap configs, re-point the `config.json` symlink and restart the
-service:
+Testing procedure — the active config is selected by re-pointing the
+`config.json` symlink and restarting the service:
 
-```bash
-ln -sf config-test.json config.json    # switch to test timings
-sudo systemctl restart topup
-journalctl -u topup -f                 # watch the transitions
+1. Switch to the test timings and watch the log:
 
-ln -sf config-live.json config.json    # switch back to production
-sudo systemctl restart topup
-```
+   ```bash
+   cd ~/topup
+   ln -sf config-test.json config.json
+   sudo systemctl restart topup
+   journalctl -u topup -f
+   ```
+
+2. What to expect in the log: the initial sensor decision at startup
+   (pump on if the level is low); the min-run warning 5 s later if the
+   level is still low; the sweep motor on at the 30 s mark and off again
+   5 s later, repeating every 30 s. With the level full, the pump comes
+   on within 30 s of a "water low" edge (test lockout).
+
+3. Switch back to the production config when done — the test timings
+   must not be left in place unattended (30 s lockout defeats the
+   bounded top-up frequency safety):
+
+   ```bash
+   ln -sf config-live.json config.json
+   sudo systemctl restart topup
+   systemctl is-active topup      # expect: active
+   ```
+
+The symlink swap is atomic for the service: the config is read once at
+startup, so timings only change on restart.
 
 ## Installation and usage
 
