@@ -1,0 +1,14 @@
+{
+    "water_sensor_gpio": 21,
+    "water_sensor_pull_up": null,
+    "water_sensor_active_state": false,
+    "water_sensor_bounce_s": null,
+    "topup_pump_gpio": 8,
+    "topup_pump_active_high": true,
+    "sweep_motor_gpio": 9,
+    "sweep_motor_active_high": true,
+    "topup_min_open_s": 5,
+    "topup_min_close_s": 30,
+    "sweep_on_s": 5,
+    "sweep_off_s": 30
+}

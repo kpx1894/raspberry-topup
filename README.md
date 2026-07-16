@@ -98,6 +98,23 @@ The program refuses to start (exit code 1, clear log message) on a
 missing or invalid config — it never falls back to silent defaults, and
 no GPIO device is opened before the config has validated.
 
+### Live-test configuration
+
+`config.test.json` has the same pins and electrical settings as
+`config.json` but short cycles — pump minimum run 5 s, lockout 30 s,
+sweep 5 s on / 30 s off — so every state transition can be observed
+within a minute instead of hours. It drives the real outputs: the pump
+and motor genuinely switch.
+
+To swap it in, stop the service and run in the foreground with the test
+config, then restore the service (which always uses `config.json`):
+
+```bash
+sudo systemctl stop topup
+python3 topup.py --config config.test.json    # watch the log output; Ctrl+C when done
+sudo systemctl start topup
+```
+
 ## Installation and usage
 
 ```bash
