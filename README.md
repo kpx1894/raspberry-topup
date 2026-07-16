@@ -101,7 +101,10 @@ no GPIO device is opened before the config has validated.
 ## Installation and usage
 
 ```bash
-sudo apt install python3-gpiozero    # usually preinstalled on Raspberry Pi OS
+sudo apt install git python3-gpiozero   # both usually preinstalled on Raspberry Pi OS
+git clone https://github.com/kpx1894/raspberry-topup.git ~/topup
+cd ~/topup
+python3 test_topup.py                # post-install check; runs on mock pins, no GPIO touched
 
 python3 topup.py                     # config.json next to the script
 python3 topup.py --config /etc/topup.json
@@ -236,6 +239,7 @@ Description=Aquarium top-up and skimmer sweep controller
 
 [Service]
 ExecStart=/usr/bin/python3 /home/pi/topup/topup.py
+WorkingDirectory=/home/pi
 User=pi
 Restart=on-failure
 RestartSec=5
@@ -253,7 +257,12 @@ journalctl -u topup -f        # follow the logs
 ```
 
 The `User=` account must be in the `gpio` group (the default `pi` user
-is). `systemctl stop` sends SIGTERM, which the program handles by
+is). `WorkingDirectory=` must point to a directory writable by that
+user: the lgpio library backing gpiozero creates its `.lgd-nfy*`
+notification FIFO in the current working directory, and without a
+writable one the lgpio pin factory fails to load — the service then
+crash-loops with `PinFactoryFallback` warnings as gpiozero falls back
+to the defunct sysfs backend. `systemctl stop` sends SIGTERM, which the program handles by
 switching both outputs off before exiting; `Restart=on-failure` pairs
 with the non-zero exit code the program uses when a control thread
 crashes, a worker fails to stop, or the config is invalid, while a
