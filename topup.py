@@ -69,8 +69,8 @@ Safety
     sensor reports the level restored. A warning is logged when the
     minimum run time expires with the level still low.
 
-Hardware assumptions (shipped config.json)
-------------------------------------------
+Hardware assumptions (shipped configs)
+--------------------------------------
   * Optical level sensor on GPIO 21 drives its output HIGH when dry and
     LOW when wet; wet means the level is FULL (pull_up null,
     active_state false).

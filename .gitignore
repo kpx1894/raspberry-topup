@@ -1,1 +1,3 @@
 __pycache__/
+# local symlink selecting the active config (config-live.json or config-test.json)
+config.json

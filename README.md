@@ -52,9 +52,16 @@ A simple repeating cycle, starting with the off period: off for
 
 ## Configuration
 
-All pins, electrical behaviour, and timings live in `config.json` (no
-values are hardcoded). By default the file is loaded from the script's
-directory; use `--config` for an alternate path.
+All pins, electrical behaviour, and timings live in a JSON config file
+(no values are hardcoded). The repository ships two:
+
+- `config-live.json` — production timings (shown below);
+- `config-test.json` — short cycles for live testing (see below).
+
+The program reads `config.json`, which is not in the repository: create
+it as a symlink to whichever config should be active. By default it is
+loaded from the script's directory; use `--config` for an alternate
+path.
 
 ```json
 {
@@ -100,19 +107,22 @@ no GPIO device is opened before the config has validated.
 
 ### Live-test configuration
 
-`config.test.json` has the same pins and electrical settings as
-`config.json` but short cycles — pump minimum run 5 s, lockout 30 s,
-sweep 5 s on / 30 s off — so every state transition can be observed
-within a minute instead of hours. It drives the real outputs: the pump
-and motor genuinely switch.
+`config-test.json` has the same pins and electrical settings as
+`config-live.json` but short cycles — pump minimum run 5 s, lockout
+30 s, sweep 5 s on / 30 s off — so every state transition can be
+observed within a minute instead of hours. It drives the real outputs:
+the pump and motor genuinely switch.
 
-To swap it in, stop the service and run in the foreground with the test
-config, then restore the service (which always uses `config.json`):
+To swap configs, re-point the `config.json` symlink and restart the
+service:
 
 ```bash
-sudo systemctl stop topup
-python3 topup.py --config config.test.json    # watch the log output; Ctrl+C when done
-sudo systemctl start topup
+ln -sf config-test.json config.json    # switch to test timings
+sudo systemctl restart topup
+journalctl -u topup -f                 # watch the transitions
+
+ln -sf config-live.json config.json    # switch back to production
+sudo systemctl restart topup
 ```
 
 ## Installation and usage
@@ -121,6 +131,7 @@ sudo systemctl start topup
 sudo apt install git python3-gpiozero   # both usually preinstalled on Raspberry Pi OS
 git clone https://github.com/kpx1894/raspberry-topup.git ~/topup
 cd ~/topup
+ln -s config-live.json config.json   # select the active config (see Configuration)
 python3 test_topup.py                # post-install check; runs on mock pins, no GPIO touched
 
 python3 topup.py                     # config.json next to the script
@@ -241,7 +252,7 @@ Covered scenarios:
   minimum-run warning is emitted when the level stays low; a partial
   device-creation failure still switches off and closes the devices that
   were created and exits non-zero.
-- **Config validation:** the shipped `config.json`; missing keys;
+- **Config validation:** both shipped config files; missing keys;
   negative timings; fractional, boolean, out-of-range, and duplicate
   GPIOs; both directions of the pull-up/active-state cross-rule; bounce
   values; missing files and malformed JSON (with the path in the error).

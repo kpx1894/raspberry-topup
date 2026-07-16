@@ -372,10 +372,15 @@ class ConfigTests(unittest.TestCase):
             self.load(config)
         self.assertIn(expected_fragment, str(ctx.exception))
 
-    def test_shipped_config_is_valid(self):
-        config = m.load_config(Path(__file__).with_name("config.json"))
+    def test_shipped_live_config_is_valid(self):
+        config = m.load_config(Path(__file__).with_name("config-live.json"))
         self.assertEqual(config["water_sensor_gpio"], 21)
         self.assertEqual(config["topup_min_close_s"], 14400)
+
+    def test_shipped_test_config_is_valid(self):
+        config = m.load_config(Path(__file__).with_name("config-test.json"))
+        self.assertEqual(config["water_sensor_gpio"], 21)
+        self.assertEqual(config["topup_min_close_s"], 30)
 
     def test_valid_config_passes(self):
         self.assertEqual(self.load(make_config())["topup_pump_gpio"], 8)
