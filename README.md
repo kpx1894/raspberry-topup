@@ -4,7 +4,7 @@ A lightweight Python daemon for a Raspberry Pi Zero W that keeps an
 aquarium's water level topped up and periodically runs a skimmer sweep
 motor. Built on [gpiozero](https://gpiozero.readthedocs.io/) with BCM
 pin numbering. Designed to share the Pi with other applications: it
-consumes essentially zero CPU while idle and has no dependencies beyond
+consumes negligible CPU while idle and has no dependencies beyond
 gpiozero.
 
 ## Functionality
@@ -36,12 +36,14 @@ A simple repeating cycle, starting with the off period: off for
 
 ## Hardware
 
-| Signal | Default GPIO (BCM) | Notes |
+| Signal | Default GPIO (BCM) | Default electrical behaviour |
 |---|---|---|
-| Water level sensor | 21 | Optical sensor, drives its output: HIGH = dry, LOW = wet (level full). No internal pull resistor is used. |
+| Water level sensor | 21 | Optical sensor drives the line: HIGH = dry, LOW = wet (level full). No internal pull resistor. |
 | Top-up pump relay | 8 | Active-high |
 | Sweep motor relay | 9 | Active-high |
 
+- The pump and motor must be driven through suitable driver electronics
+  (relay modules or MOSFET circuits) — never directly from a GPIO pin.
 - The sensor output must be a **3.3 V** signal — a 5 V-powered sensor
   that drives 5 V on its signal pin will damage the Pi's GPIO.
 - GPIO 8/9 are the SPI CE0/MISO pins: the SPI interface must be disabled
@@ -50,15 +52,20 @@ A simple repeating cycle, starting with the off period: off for
 
 ## Configuration
 
-All pins and timings live in `config.json` (no values are hardcoded).
-By default the file is loaded from the script's directory; an alternate
-path can be given as the first argument.
+All pins, electrical behaviour, and timings live in `config.json` (no
+values are hardcoded). By default the file is loaded from the script's
+directory; use `--config` for an alternate path.
 
 ```json
 {
     "water_sensor_gpio": 21,
+    "water_sensor_pull_up": null,
+    "water_sensor_active_state": false,
+    "water_sensor_bounce_s": null,
     "topup_pump_gpio": 8,
+    "topup_pump_active_high": true,
     "sweep_motor_gpio": 9,
+    "sweep_motor_active_high": true,
     "topup_min_open_s": 30,
     "topup_min_close_s": 14400,
     "sweep_on_s": 60,
@@ -66,9 +73,30 @@ path can be given as the first argument.
 }
 ```
 
-All keys are required and must be positive numbers; times are in
-seconds. The program refuses to start (exit code 1, clear log message)
-on a missing or invalid config — it never falls back to silent defaults.
+Every key is required (nullable keys must be present with an explicit
+`null`); times are in seconds. Validation rules:
+
+- GPIO keys must be distinct integers in the BCM range 0–27.
+- Timing keys must be positive numbers.
+- `water_sensor_pull_up`: `true`/`false` selects the Pi's internal pull
+  resistor; `null` means the sensor drives the line itself.
+- `water_sensor_active_state` says which pin level means "level full".
+  It must be `true` or `false` when `water_sensor_pull_up` is `null`,
+  and must be `null` when a pull resistor is selected (gpiozero infers
+  it from the pull direction).
+- `water_sensor_bounce_s`: software debounce in seconds, or `null` for
+  none.
+
+> **Warning:** `topup_pump_active_high` and `sweep_motor_active_high`
+> describe the relay wiring. Setting one wrongly **inverts that
+> output** — "off" energises the load — while every log message still
+> reads correctly. Verify against the actual relay board before
+> unattended operation. The safe initial output state (off) is
+> intentionally not configurable.
+
+The program refuses to start (exit code 1, clear log message) on a
+missing or invalid config — it never falls back to silent defaults, and
+no GPIO device is opened before the config has validated.
 
 ## Installation and usage
 
@@ -76,7 +104,8 @@ on a missing or invalid config — it never falls back to silent defaults.
 sudo apt install python3-gpiozero    # usually preinstalled on Raspberry Pi OS
 
 python3 topup.py                     # config.json next to the script
-python3 topup.py /etc/topup.json     # explicit config path
+python3 topup.py --config /etc/topup.json
+python3 topup.py --help
 ```
 
 Stop with Ctrl+C (or SIGTERM); both outputs are switched off before the
@@ -93,14 +122,17 @@ coordinated by a single shared `threading.Event` for shutdown:
   `when_activated`/`when_deactivated` edge callbacks.
 - **`SkimmerSweep`** owns the motor and is just two alternating
   `stop.wait()` calls.
-- **`main()`** loads the config, creates the GPIO devices, installs
-  SIGINT/SIGTERM handlers, starts the threads and blocks until shutdown.
+- **`run(config, stop)`** creates the GPIO devices, starts the threads,
+  blocks until shutdown, and tears everything down in a safe order.
+- **`main(argv)`** parses arguments, loads the config, and installs
+  SIGINT/SIGTERM handlers around `run()`.
 
 ### Design decisions
 
 - **No polling loop.** Every thread is blocked on an event or condition
-  between transitions; there are no periodic wake-ups, so idle CPU use is
-  zero — important on a Pi Zero W shared with other applications.
+  between transitions; there are no periodic wake-ups, so idle CPU use
+  is negligible — important on a Pi Zero W shared with other
+  applications.
 - **Condition + callbacks instead of `sensor.wait_for_active()`.**
   gpiozero's blocking waits cannot be interrupted by an external stop
   event, which would make shutdown non-deterministic while the pump is
@@ -112,58 +144,87 @@ coordinated by a single shared `threading.Event` for shutdown:
 - **Dependency injection for testability.** The classes accept any
   objects with the right interface (`is_active`, `on()`/`off()`,
   callbacks) and take their timings as constructor arguments, so the
-  full state machines run against simulated pins with millisecond
-  timings in the test suite.
+  full state machines run against fake devices with millisecond timings
+  in the test suite; `run()` is separated from `main()` so the whole
+  lifecycle is testable on mock pins.
 
 ## Safety features
 
-- **Safe initial state:** both outputs are created off; the pump and
-  motor are never energised before the state machines decide to.
-- **Safe shutdown:** on SIGINT, SIGTERM or an unexpected exception, both
-  outputs are forced off before the process exits (`finally` block in
-  `main()`, plus each thread switches its own output off on exit).
-- **Fail loud:** if a control thread crashes, it turns its own output
-  off, logs the traceback and stops the entire program with a non-zero
-  exit code, so a supervisor restarts it — the program never keeps
-  running half-broken.
+- **Safe initial state:** both outputs are created off
+  (`initial_value=False`, not configurable); the pump and motor are
+  never energised before the state machines decide to.
+- **Safe shutdown:** on SIGINT, SIGTERM or an unexpected exception —
+  including a failure part-way through device creation — every
+  successfully created output is forced off and every device is
+  explicitly closed.
+- **Ordered teardown:** controllers are stopped and the sensor callbacks
+  detached *before* the outputs are switched off and closed, so a late
+  sensor edge cannot re-energise an output during teardown.
+- **Stop-before-start guarantee:** a shutdown requested before a control
+  thread begins running prevents any output from being switched on at
+  all.
+- **Fail loud:** if a control thread crashes — even if switching its own
+  output off then also fails — the shared stop event is still set, the
+  traceback is logged, and the program exits non-zero so a supervisor
+  restarts it. A worker thread that fails to stop within 5 seconds is
+  likewise reported and produces a non-zero exit code.
 - **Bounded top-up frequency:** the lockout guarantees a minimum pause
   between top-ups even with a faulty sensor.
-- **Config validation:** missing or non-positive values abort start-up
-  before any GPIO device is created.
+- **Config validation:** schema, ranges, pin uniqueness, and the
+  pull-up/active-state cross-rule are all checked before any GPIO device
+  is created.
 - **Known limitation:** there is **no maximum pump run time**. If the
   sensor sticks at "dry" while the pump is running, the pump runs until
-  the sensor recovers. Size the top-up reservoir so that emptying it
-  completely cannot overflow the aquarium, or add a max-run cutoff in
-  `TopUp` if that guarantee is needed.
+  the sensor recovers; a warning is logged when the minimum run time
+  expires with the level still low. Size the top-up reservoir so that
+  emptying it completely cannot overflow the aquarium, or add a max-run
+  cutoff in `TopUp` if that guarantee is needed.
+
+### Operational caveats
+
+- Linux is not a real-time operating system: under load, transitions can
+  occur slightly late, but minimum run and lockout periods are never
+  shortened.
+- Restarting the process resets both timing cycles (the lockout and the
+  sweep cycle start over).
+- Software cannot control pin voltage before the OS and this process
+  configure the GPIO; use hardware pulls and drivers with safe default
+  states if boot-time transients present a hazard.
+- Before unattended operation, test on the actual hardware with the pump
+  and motor disconnected or replaced by indicator loads, and verify every
+  sensor state, timed transition, signal shutdown, and service restart.
 
 ## Testing
 
-`test_topup.py` exercises the real state-machine code against
-[gpiozero's mock pin factory](https://gpiozero.readthedocs.io/en/stable/api_pins.html#mock-pins)
-— no hardware required — with timings scaled down to milliseconds. It
-runs on any machine with Python 3 and gpiozero installed:
+`test_topup.py` is a standard-library `unittest` suite — no hardware and
+no extra dependencies required. Controller behaviour and safety paths
+run against in-process fake devices; the full `run()` lifecycle runs
+against [gpiozero's mock pin factory](https://gpiozero.readthedocs.io/en/stable/api_pins.html#mock-pins).
+Timings are scaled to fractions of a second, transition timestamps are
+recorded, and lower bounds are asserted for every timed phase.
 
 ```bash
-python3 test_topup.py
+python3 test_topup.py        # or: python3 -m unittest -v
 ```
 
 Covered scenarios:
 
-- start-up with the level full (pump stays off, lockout begins) and with
-  the level low (pump turns on immediately);
-- the pump is held off during the lockout even when the water is low,
-  and turns on as soon as the lockout expires;
-- the pump keeps running for the minimum run time even if the level is
-  restored instantly, and turns off once both conditions are met;
-- the sweep motor starts with its off period and honours both the off
-  and on durations;
-- shutdown while the pump is running forces all outputs off and both
-  threads exit promptly;
-- config loading: the shipped `config.json` validates; a missing key, a
-  negative value, and a missing file are all rejected.
-
-The test prints one PASS/FAIL line per check and exits non-zero on any
-failure.
+- **Behaviour:** start-up with the level full (pump stays off, lockout
+  begins) and low (pump on immediately); the lockout holds the pump off
+  despite low water and releases on expiry; the minimum run holds the
+  pump on despite a restored level; the sweep starts with its off period
+  and honours both phase durations; shutdown while running forces
+  outputs off promptly.
+- **Safety paths:** a stop event set before thread start never energises
+  an output; an output failure — even when the fail-safe `off()` also
+  raises — still sets the shared stop event and the crash flag; the
+  minimum-run warning is emitted when the level stays low; a partial
+  device-creation failure still switches off and closes the devices that
+  were created and exits non-zero.
+- **Config validation:** the shipped `config.json`; missing keys;
+  negative timings; fractional, boolean, out-of-range, and duplicate
+  GPIOs; both directions of the pull-up/active-state cross-rule; bounce
+  values; missing files and malformed JSON (with the path in the error).
 
 ## Running as a service
 
@@ -195,5 +256,5 @@ The `User=` account must be in the `gpio` group (the default `pi` user
 is). `systemctl stop` sends SIGTERM, which the program handles by
 switching both outputs off before exiting; `Restart=on-failure` pairs
 with the non-zero exit code the program uses when a control thread
-crashes or the config is invalid, while a deliberate `systemctl stop`
-stays stopped.
+crashes, a worker fails to stop, or the config is invalid, while a
+deliberate `systemctl stop` stays stopped.
