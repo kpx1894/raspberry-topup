@@ -257,13 +257,29 @@ journalctl -u topup -f        # follow the logs
 ```
 
 The `User=` account must be in the `gpio` group (the default `pi` user
-is). `WorkingDirectory=` must point to a directory writable by that
-user: the lgpio library backing gpiozero creates its `.lgd-nfy*`
-notification FIFO in the current working directory, and without a
-writable one the lgpio pin factory fails to load — the service then
-crash-loops with `PinFactoryFallback` warnings as gpiozero falls back
-to the defunct sysfs backend. `systemctl stop` sends SIGTERM, which the program handles by
+is). `systemctl stop` sends SIGTERM, which the program handles by
 switching both outputs off before exiting; `Restart=on-failure` pairs
 with the non-zero exit code the program uses when a control thread
 crashes, a worker fails to stop, or the config is invalid, while a
 deliberate `systemctl stop` stays stopped.
+
+### lgpio needs a writable working directory
+
+gpiozero drives the pins through the lgpio library, and lgpio creates a
+notification FIFO (`.lgd-nfy*`) **in the process's current working
+directory** when the first device is opened. If that directory is not
+writable by the service user, the lgpio pin factory fails to load — and
+so does the `RPi.GPIO` compatibility shim, which is lgpio-backed on
+current Raspberry Pi OS. gpiozero then silently falls back to the
+legacy sysfs backend, which no longer works on current kernels, and the
+service crash-loops.
+
+- **Symptom:** the service exits with `OSError: [Errno 22] Invalid
+  argument` from `gpiozero/pins/native.py`, preceded by
+  `PinFactoryFallback: Falling back from lgpio: [Errno 2] No such file
+  or directory: '.lgd-nfy-…'` warnings and `xCreatePipe: Can't set
+  permissions` messages. Running the script by hand works, because an
+  interactive shell starts in the home directory.
+- **Solution:** the `WorkingDirectory=/home/pi` line in the unit above.
+  Any directory writable by the `User=` account works; the FIFO is
+  removed again on clean exit.
