@@ -39,8 +39,24 @@ A simple repeating cycle, starting with the off period: off for
 | Signal | Default GPIO (BCM) | Default electrical behaviour |
 |---|---|---|
 | Water level sensor | 21 | Optical sensor drives the line: HIGH = dry, LOW = wet (level full). No internal pull resistor. |
-| Top-up pump relay | 8 | Active-high |
-| Sweep motor relay | 9 | Active-high |
+| Top-up pump relay | 16 | Active-high |
+| Sweep motor relay | 11 | Active-high |
+
+### Relay board pin map
+
+The relay board has 8 sockets in 3 rows (2 unused). Current wiring:
+
+| GPIO (BCM) | Relay | Socket | Use |
+|---|---|---|---|
+| 8 | 1 | upper row, right | **Inoperative** — relay burned out; socket wired permanently on |
+| 9 | 2 | upper row, middle | unused |
+| 10 | 3 | upper row, left | unused |
+| 11 | 4 | middle row, right | Skimmer sweep motor |
+| 12 | 5 | middle row, middle | unused |
+| 13 | 6 | middle row, left | unused |
+| 16 | 7 | bottom row, right | Top-up valve/pump |
+| 17 | 8 | bottom row, middle | unused |
+| 21 | — | — | Optical water sensor: no internal pull resistor (`water_sensor_pull_up: null`); output LOW = wet (level full), HIGH = dry (`water_sensor_active_state: false`) |
 
 - The pump and motor must be driven through suitable driver electronics
   (relay modules or MOSFET circuits) — never directly from a GPIO pin.
@@ -53,9 +69,10 @@ A simple repeating cycle, starting with the off period: off for
   lower the IR LED's series resistor to restore ~10 mA of LED current
   (about 200 Ω at 3.3 V, e.g. a 470 Ω soldered in parallel with a
   factory 380 Ω).
-- GPIO 8/9 are the SPI CE0/MISO pins: the SPI interface must be disabled
-  (`raspi-config` → Interface Options → SPI → No), or different pins
-  configured.
+- GPIO 8/9/10/11 are the SPI CE0/MISO/MOSI/SCLK pins — the sweep motor
+  relay (GPIO 11) sits on one of them, so the SPI interface must stay
+  disabled (`raspi-config` → Interface Options → SPI → No), or a
+  different pin configured.
 
 ## Configuration
 
@@ -76,9 +93,9 @@ path.
     "water_sensor_pull_up": null,
     "water_sensor_active_state": false,
     "water_sensor_bounce_s": null,
-    "topup_pump_gpio": 8,
+    "topup_pump_gpio": 16,
     "topup_pump_active_high": true,
-    "sweep_motor_gpio": 9,
+    "sweep_motor_gpio": 11,
     "sweep_motor_active_high": true,
     "topup_min_open_s": 30,
     "topup_min_close_s": 14400,

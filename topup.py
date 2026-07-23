@@ -74,7 +74,7 @@ Hardware assumptions (shipped configs)
   * Optical level sensor on GPIO 21 drives its output HIGH when dry and
     LOW when wet; wet means the level is FULL (pull_up null,
     active_state false).
-  * Pump relay (GPIO 8) and sweep motor relay (GPIO 9) are active-high.
+  * Pump relay (GPIO 16) and sweep motor relay (GPIO 11) are active-high.
   * If the configured output pins are SPI pins (e.g. GPIO 8/9), the SPI
     interface must be disabled (raspi-config -> Interface Options).
 """
