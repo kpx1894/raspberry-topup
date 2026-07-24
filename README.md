@@ -44,31 +44,41 @@ A simple repeating cycle, starting with the off period: off for
 
 ### Relay board pin map
 
-The relay board has 8 sockets in 3 rows (2 unused). Current wiring:
+The relay board has 8 sockets in 3 rows (2 unused). Current wiring.
+Each relay control pin has an external **10 kΩ pull-down** to hold it
+low (relay off) while the pin floats during Pi boot, before the
+daemon starts driving it:
 
 | GPIO (BCM) | Relay | Socket | Use |
 |---|---|---|---|
 | 8 | 1 | upper row, right | **Inoperative** — relay burned out; socket wired permanently on |
 | 9 | 2 | upper row, middle | unused |
 | 10 | 3 | upper row, left | unused |
-| 11 | 4 | middle row, right | Skimmer sweep motor |
+| 11 | 4 | middle row, right | Skimmer sweep motor — 10 kΩ pull-down |
 | 12 | 5 | middle row, middle | unused |
 | 13 | 6 | middle row, left | unused |
-| 16 | 7 | bottom row, right | Top-up valve/pump |
+| 16 | 7 | bottom row, right | Top-up valve/pump — 10 kΩ pull-down |
 | 17 | 8 | bottom row, middle | unused |
-| 21 | — | — | Optical water sensor: no internal pull resistor (`water_sensor_pull_up: null`); output LOW = wet (level full), HIGH = dry (`water_sensor_active_state: false`) |
+| 21 | — | — | Optical water sensor: no internal pull resistor (`water_sensor_pull_up: null`); 4.68 kΩ pull-down on the sense pin, 220 Ω LED series resistor; output LOW = wet (level full), HIGH = dry (`water_sensor_active_state: false`) |
 
 - The pump and motor must be driven through suitable driver electronics
   (relay modules or MOSFET circuits) — never directly from a GPIO pin.
 - Power the sensor from the Pi's **3.3 V** rail so its output can never
   exceed 3.3 V — a sensor that drives more than 3.3 V on its signal pin
-  stresses or damages the Pi's GPIO. For bare LED-plus-phototransistor
-  modules (no on-board comparator), measure the signal pin with the tip
-  dry after switching to 3.3 V: it should stay comfortably above
-  ~2.5 V. If it sits near the Pi's ~1.6 V input threshold instead,
-  lower the IR LED's series resistor to restore ~10 mA of LED current
-  (about 200 Ω at 3.3 V, e.g. a 470 Ω soldered in parallel with a
-  factory 380 Ω).
+  stresses or damages the Pi's GPIO. The shipped module was originally
+  wired to the Pi's 5 V rail and measured 3.8 V dry — the BCM2835's
+  absolute maximum input voltage (VDD + 0.5 V), i.e. right at the edge
+  of damaging the GPIO — so the sensor's supply pins were moved to 3.3 V
+  instead of adding a divider. For bare LED-plus-phototransistor modules
+  (no on-board comparator), measure the signal pin with the tip dry
+  after switching to 3.3 V: it should stay comfortably above ~2.5 V. If
+  it sits near the Pi's ~1.6 V input threshold instead (a first pass on
+  this sensor read 1.8 V dry at 3.3 V — the halved LED current pushed
+  the phototransistor out of saturation), lower the IR LED's series
+  resistor to restore ~10 mA of LED current (about 200 Ω at 3.3 V). The
+  shipped sensor uses a **220 Ω** LED series resistor and a **4.68 kΩ**
+  pull-down on the sense pin, giving a verified ~2.9 V dry / near-0 V
+  wet swing.
 - GPIO 8/9/10/11 are the SPI CE0/MISO/MOSI/SCLK pins — the sweep motor
   relay (GPIO 11) sits on one of them, so the SPI interface must stay
   disabled (`raspi-config` → Interface Options → SPI → No), or a
